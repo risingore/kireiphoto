@@ -1,0 +1,8 @@
+torch==2.0.1
+torchvision==0.15.2
+basicsr==1.4.2
+realesrgan
+opencv-python-headless
+numpy<2
+Pillow
+huggingface_hub
