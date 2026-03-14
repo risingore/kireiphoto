@@ -46,10 +46,13 @@ export function useImageEnhance() {
         wakeLock = await navigator.wakeLock.request('screen').catch(() => null)
       }
 
-      // Step 1: Resize and convert to base64
+      // Step 1: Read original image dimensions and convert to base64
       phase.value = 'preparing'
       progress.value = 5
       const dataUri = await fileToDataUri(file)
+      const originalImg = await loadImage(new Blob([file], { type: file.type }))
+      const originalWidth = originalImg.width
+      const originalHeight = originalImg.height
 
       // Step 2: Send to server (AI processing + download in one request)
       phase.value = 'enhancing'
@@ -66,7 +69,7 @@ export function useImageEnhance() {
       stopProgressTimer()
       phase.value = 'polishing'
       progress.value = 95
-      const enhancedBlob = await postProcess(aiBlob)
+      const enhancedBlob = await postProcess(aiBlob, originalWidth, originalHeight)
 
       const enhancedUrl = URL.createObjectURL(enhancedBlob)
       progress.value = 100
@@ -116,22 +119,21 @@ function loadImage(blob: Blob): Promise<HTMLImageElement> {
   })
 }
 
-async function postProcess(blob: Blob): Promise<Blob> {
+async function postProcess(blob: Blob, targetWidth: number, targetHeight: number): Promise<Blob> {
   const img = await loadImage(blob)
-  const { width, height } = img
 
   const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
+  canvas.width = targetWidth
+  canvas.height = targetHeight
   const ctx = canvas.getContext('2d')!
 
-  // Draw with CSS filter: contrast +8%, saturate +12%
+  // Downscale 4x AI output to original size + contrast +8%, saturate +12%
   ctx.filter = 'contrast(1.08) saturate(1.12)'
-  ctx.drawImage(img, 0, 0)
+  ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
   ctx.filter = 'none'
 
   // Unsharp Mask
-  applyUnsharpMask(ctx, width, height, 0.4, 1)
+  applyUnsharpMask(ctx, targetWidth, targetHeight, 0.4, 1)
 
   return new Promise((resolve) => {
     canvas.toBlob((b) => resolve(b!), blob.type || 'image/png', 0.95)
