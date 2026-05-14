@@ -1,0 +1,11 @@
+name = "kireiphoto"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"
+
+# Create your own namespace with:
+#   bunx wrangler kv namespace create ENHANCE_KV
+# then paste the returned id below.
+[[kv_namespaces]]
+binding = "ENHANCE_KV"
+id = "<your-kv-namespace-id>"

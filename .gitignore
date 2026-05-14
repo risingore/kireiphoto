@@ -20,9 +20,11 @@ Thumbs.db
 .vscode
 .idea
 
-# Claude Code
+# Kima governance layer (NEVER push to GitHub)
 .claude/
 CLAUDE.md
+CLAUDE.md.pre-kima-core.bak
+.cursorrules
 
 # Internal
 tasks/
@@ -33,3 +35,4 @@ migrations/.wrangler
 # Cloudflare
 .wrangler
 .dev.vars
+wrangler.toml
