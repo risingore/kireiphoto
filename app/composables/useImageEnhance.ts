@@ -21,8 +21,8 @@ export function useImageEnhance() {
     timerHandle = setInterval(() => {
       const elapsed = (Date.now() - startTime) / 1000
       // Asymptotic curve: approaches 90% but never reaches it
-      // At 30s → ~63%, at 60s → ~78%, at 120s → ~86%
-      progress.value = Math.round(10 + 80 * (1 - Math.exp(-elapsed / 40)))
+      // At 60s → ~71%, at 120s → ~83%, at 300s → ~89.5%, at 600s → ~89.99%
+      progress.value = Math.round(10 + 80 * (1 - Math.exp(-elapsed / 60)))
     }, 500)
   }
 
@@ -34,6 +34,7 @@ export function useImageEnhance() {
   }
 
   async function enhance(file: File): Promise<{
+    originalUrl: string
     enhancedUrl: string
     enhancedBlob: Blob
   }> {
@@ -46,26 +47,29 @@ export function useImageEnhance() {
         wakeLock = await navigator.wakeLock.request('screen').catch(() => null)
       }
 
-      // Step 1: Read original image dimensions and convert to base64
+      // Step 1: Normalize the input — apply EXIF orientation and strip metadata
+      // so HF Space (PIL, which ignores EXIF) and the browser agree on the
+      // pixel grid. Without this, iPhone portrait photos arrive as raw
+      // landscape pixels and the AI's 4x output gets stretched into the wrong
+      // aspect ratio during the canvas downscale.
       phase.value = 'preparing'
       progress.value = 5
-      const dataUri = await fileToDataUri(file)
-      const originalImg = await loadImage(new Blob([file], { type: file.type }))
-      const originalWidth = originalImg.width
-      const originalHeight = originalImg.height
+      const { dataUri, originalUrl, width: originalWidth, height: originalHeight } =
+        await normalizeImage(file)
 
-      // Step 2: Send to server (AI processing + download in one request)
+      // Step 2: Start AI job, then long-poll the NDJSON stream until complete.
       phase.value = 'enhancing'
       progress.value = 10
       startProgressTimer()
 
-      const aiBlob = await $fetch<Blob>('/api/enhance', {
+      const { eventId } = await $fetch<{ eventId: string }>('/api/enhance', {
         method: 'POST',
         body: { image: dataUri },
-        responseType: 'blob',
       })
 
-      // Step 3: Canvas post-processing (sharpen + contrast/saturation)
+      const aiBlob = await pollForResult(eventId)
+
+      // Step 3: Canvas post-processing (downscale to original size + sharpen)
       stopProgressTimer()
       phase.value = 'polishing'
       progress.value = 95
@@ -74,7 +78,7 @@ export function useImageEnhance() {
       const enhancedUrl = URL.createObjectURL(enhancedBlob)
       progress.value = 100
 
-      return { enhancedUrl, enhancedBlob }
+      return { originalUrl, enhancedUrl, enhancedBlob }
     } finally {
       wakeLock?.release()
       stopProgressTimer()
@@ -98,13 +102,105 @@ export function useImageEnhance() {
   }
 }
 
-function fileToDataUri(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+// Open a single long-polling stream that the server holds for the entire job.
+// The stream emits NDJSON heartbeats so the connection stays alive past
+// Cloudflare's 100s edge timeout. On `complete` we fetch the actual image from
+// the download endpoint (the server cached the URL in KV).
+async function pollForResult(eventId: string): Promise<Blob> {
+  const res = await fetch(`/api/enhance/result?id=${encodeURIComponent(eventId)}`)
+  if (!res.ok || !res.body) {
+    throw new Error(await extractErrorMessage(res))
+  }
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let completed = false
+
+  try {
+    while (!completed) {
+      const { done, value } = await reader.read()
+      if (done) {
+        if (!completed) throw new Error('AI処理が予期せず終了しました')
+        break
+      }
+      buffer += decoder.decode(value, { stream: true })
+
+      let nlIdx: number
+      while ((nlIdx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nlIdx).trim()
+        buffer = buffer.slice(nlIdx + 1)
+        if (!line) continue
+
+        let evt: { event?: string; message?: string }
+        try {
+          evt = JSON.parse(line)
+        } catch {
+          continue
+        }
+
+        if (evt.event === 'error') {
+          throw new Error(evt.message || 'AI処理に失敗しました')
+        }
+        if (evt.event === 'complete') {
+          completed = true
+          break
+        }
+      }
+    }
+  } finally {
+    reader.cancel().catch(() => {})
+  }
+
+  const imgRes = await fetch(`/api/enhance/download?id=${encodeURIComponent(eventId)}`)
+  if (!imgRes.ok) {
+    throw new Error(await extractErrorMessage(imgRes))
+  }
+  return await imgRes.blob()
+}
+
+// Translate a non-2xx Response into a short, user-safe message. Cloudflare
+// edge errors and HTML bodies are collapsed to a generic status string so the
+// raw page never leaks into the UI.
+async function extractErrorMessage(res: Response): Promise<string> {
+  const fallback = `サーバーエラー (HTTP ${res.status})`
+  let text = ''
+  try {
+    text = await res.text()
+  } catch {
+    return fallback
+  }
+  const trimmed = text.trim()
+  if (!trimmed) return fallback
+  if (trimmed.startsWith('<')) return fallback
+  try {
+    const json = JSON.parse(trimmed)
+    return json.statusMessage || json.message || fallback
+  } catch {
+    return trimmed.length > 200 ? fallback : trimmed
+  }
+}
+
+// Re-encode the file through a canvas so EXIF orientation is baked into the
+// pixels and the metadata is stripped. This ensures the AI sees the same
+// pixel grid the browser displays, eliminating the aspect-ratio mismatch that
+// would otherwise stretch the AI output during the final downscale.
+async function normalizeImage(file: File): Promise<{
+  dataUri: string
+  originalUrl: string
+  width: number
+  height: number
+}> {
+  const img = await loadImage(new Blob([file], { type: file.type }))
+  const canvas = document.createElement('canvas')
+  canvas.width = img.width
+  canvas.height = img.height
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0)
+
+  const dataUri = canvas.toDataURL('image/jpeg', 0.92)
+  const originalUrl = URL.createObjectURL(file)
+  return { dataUri, originalUrl, width: img.width, height: img.height }
 }
 
 function loadImage(blob: Blob): Promise<HTMLImageElement> {

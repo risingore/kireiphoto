@@ -1,3 +1,5 @@
+import type { H3Event } from 'h3'
+
 export function getSpaceUrl(event: H3Event): string {
   const url =
     useRuntimeConfig(event).hfSpaceUrl ||
@@ -13,11 +15,10 @@ export function getSpaceUrl(event: H3Event): string {
   return url.replace(/\/+$/, '')
 }
 
-export async function callGradioPredict(
+export async function startGradioJob(
   spaceUrl: string,
   imageBase64: string
 ): Promise<string> {
-  // Step 1: Call Gradio API to start the job
   const callRes = await $fetch<{ event_id: string }>(
     `${spaceUrl}/gradio_api/call/predict`,
     {
@@ -33,37 +34,35 @@ export async function callGradioPredict(
   if (!eventId) {
     throw createError({ statusCode: 502, statusMessage: 'AI処理の開始に失敗しました' })
   }
+  return eventId
+}
 
-  // Step 2: Poll SSE endpoint for result
-  const sseRes = await fetch(`${spaceUrl}/gradio_api/call/predict/${eventId}`)
-  if (!sseRes.ok || !sseRes.body) {
-    throw createError({ statusCode: 502, statusMessage: 'AI処理の結果取得に失敗しました' })
+export type PollResult =
+  | { status: 'complete'; url: string }
+  | { status: 'error'; message: string }
+  | { status: 'pending' }
+
+export const SSE_BUFFER_LIMIT = 1_000_000
+
+export function parseSseEvent(rawEvent: string): PollResult | null {
+  let eventName = ''
+  const dataLines: string[] = []
+  for (const line of rawEvent.split('\n')) {
+    const clean = line.replace(/\r$/, '')
+    if (clean.startsWith('event: ')) eventName = clean.slice(7).trim()
+    else if (clean.startsWith('data: ')) dataLines.push(clean.slice(6))
   }
+  const data = dataLines.join('\n')
 
-  const text = await sseRes.text()
-  const lines = text.split('\n')
-
-  // Parse SSE: find the "complete" event's data line
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith('event: complete')) {
-      const dataLine = lines[i + 1]
-      if (dataLine?.startsWith('data: ')) {
-        const json = JSON.parse(dataLine.slice(6))
-        const output = json[0]
-        // Gradio returns either a URL or a file object with url property
-        if (typeof output === 'string') return output
-        if (output?.url) return output.url
-        throw createError({ statusCode: 502, statusMessage: 'AI処理の出力形式が不正です' })
-      }
-    }
-    if (lines[i].startsWith('event: error')) {
-      const dataLine = lines[i + 1]
-      const errorMsg = dataLine?.startsWith('data: ')
-        ? dataLine.slice(6)
-        : 'AI処理でエラーが発生しました'
-      throw createError({ statusCode: 502, statusMessage: errorMsg })
-    }
+  if (eventName === 'complete') {
+    const parsed = JSON.parse(data)
+    const output = parsed[0]
+    if (typeof output === 'string') return { status: 'complete', url: output }
+    if (output?.url) return { status: 'complete', url: output.url }
+    return { status: 'error', message: 'AI処理の出力形式が不正です' }
   }
-
-  throw createError({ statusCode: 504, statusMessage: 'AI処理がタイムアウトしました' })
+  if (eventName === 'error') {
+    return { status: 'error', message: data || 'AI処理でエラーが発生しました' }
+  }
+  return null
 }

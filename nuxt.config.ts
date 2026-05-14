@@ -1,3 +1,14 @@
+import { execSync } from 'node:child_process'
+
+const buildSha = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+})()
+const buildTime = new Date().toISOString()
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: true },
@@ -27,7 +38,9 @@ export default defineNuxtConfig({
     hfSpaceUrl: '',
     public: {
       appName: 'kirei photo',
-      appUrl: process.env.APP_URL || 'http://localhost:3000'
+      appUrl: process.env.APP_URL || 'http://localhost:3000',
+      buildSha,
+      buildTime,
     }
   },
 

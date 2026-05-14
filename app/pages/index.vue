@@ -7,6 +7,11 @@ const {
   statusMessage,
 } = useImageEnhance()
 
+// Wake the HF Space on mount so the first upload doesn't pay cold-start cost.
+onMounted(() => {
+  fetch('/api/enhance/warmup').catch(() => {})
+})
+
 type AppState = 'idle' | 'processing' | 'result'
 const state = ref<AppState>('idle')
 const fileInputRef = ref<HTMLInputElement>()
@@ -29,8 +34,8 @@ async function onFileSelected(e: Event) {
   state.value = 'processing'
 
   try {
-    originalUrl.value = URL.createObjectURL(file)
     const result = await enhance(file)
+    originalUrl.value = result.originalUrl
     enhancedUrl.value = result.enhancedUrl
     enhancedBlob.value = result.enhancedBlob
     state.value = 'result'
@@ -43,13 +48,22 @@ async function onFileSelected(e: Event) {
   }
 }
 
+function isMobile(): boolean {
+  const uaData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData
+  if (uaData && typeof uaData.mobile === 'boolean') return uaData.mobile
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+}
+
 async function save() {
   if (!enhancedBlob.value) return
 
   const ext = enhancedBlob.value.type === 'image/png' ? '.png' : '.jpg'
   const fileName = `kirei_${Date.now()}${ext}`
 
-  if (navigator.share) {
+  // On mobile, prefer the share sheet so the user can save to Photos / send to
+  // a messaging app in one tap. On desktop, share dialogs are awkward — just
+  // trigger a direct download instead.
+  if (isMobile() && navigator.share) {
     const file = new File([enhancedBlob.value], fileName, {
       type: enhancedBlob.value.type,
     })
@@ -166,15 +180,25 @@ onUnmounted(revokeUrls)
 
     <!-- Result State -->
     <template v-if="state === 'result'">
-      <div class="w-full flex flex-col gap-1" style="max-height: calc(100dvh - 14rem)">
-        <ComparisonSlider
-          :original-url="originalUrl"
-          :enhanced-url="enhancedUrl"
-          class="min-h-0 flex-1"
-        />
-        <p class="text-[10px] text-gray-400 dark:text-gray-500 text-center">
-          スライダーを動かして比較
-        </p>
+      <div class="w-full flex flex-col gap-2" style="max-height: calc(100dvh - 14rem)">
+        <div class="flex gap-2 w-full min-h-0 flex-1">
+          <div class="flex-1 flex flex-col items-center gap-1 min-h-0">
+            <img
+              :src="originalUrl"
+              class="w-full rounded-2xl shadow-md object-contain min-h-0 flex-1"
+              alt="元の写真"
+            />
+            <span class="text-xs text-gray-500 dark:text-gray-400">元の写真</span>
+          </div>
+          <div class="flex-1 flex flex-col items-center gap-1 min-h-0">
+            <img
+              :src="enhancedUrl"
+              class="w-full rounded-2xl shadow-md object-contain min-h-0 flex-1"
+              alt="高画質化した写真"
+            />
+            <span class="text-xs text-primary-500 font-semibold">高画質</span>
+          </div>
+        </div>
       </div>
 
       <div class="flex gap-5 w-full px-2">
