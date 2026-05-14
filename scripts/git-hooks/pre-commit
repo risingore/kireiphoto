@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# =============================================================================
+# pre-commit — kima-core generic last-line-of-defense.
+#
+# Distributed by sync-to-derivatives.sh to every derivative template and to
+# the machines repo. Activated by `bash scripts/install-hooks.sh` which sets
+# core.hooksPath to scripts/git-hooks.
+#
+# Checks (in order):
+#   1. Block private paths from being committed (.claude/, CLAUDE.md, .env*, etc.)
+#   2. Block banned company/personal identifiers in staged file contents
+#   3. Block bare personal mailbox or company identity in git author config
+#   4. Block oversized files (default 5 MB; override via MAX_FILE_SIZE_MB)
+#
+# Project-specific extensions: drop a `pre-commit.local` next to this file.
+# It is sourced at the END of this script and runs in the same shell, so it
+# can read $STAGED_FILES and exit non-zero to abort the commit.
+#
+# Override knobs (env vars):
+#   MAX_FILE_SIZE_MB              — default 5
+#   PRE_COMMIT_EXEMPT_EXTENSIONS  — space-separated list of extensions to
+#                                    exempt from the size check (e.g. "mp3 ogg wav")
+# =============================================================================
+
+set -u
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+# -----------------------------------------------------------------------------
+# 1. Private path block.
+# -----------------------------------------------------------------------------
+# Always-blocked paths (secret material). These are blocked regardless of
+# whether the project gitignores them, because they should NEVER be committed.
+ALWAYS_BLOCK_REGEX='^(\.env$|\.env\.local$|\.env\.production$|\.env\.staging$|\.env\.development$|\.env\.[^.]+$|\.dev\.vars$|\.wrangler/|wrangler\.toml$|secrets/|.*\.pem$|.*\.key$|.*\.p12$)'
+
+# Kima governance paths. Blocked ONLY when the project's .gitignore lists them
+# (typical for public repos). Internal-only repos (e.g. python-template which
+# is itself never pushed to GitHub) intentionally track these — there the
+# check is skipped automatically.
+GOVERNANCE_PATHS=(".claude/" "CLAUDE.md" ".cursorrules" "tasks/")
+GOVERNANCE_REGEX_PARTS=""
+for path in "${GOVERNANCE_PATHS[@]}"; do
+  case "$path" in
+    */) sample="${path}.kima_check" ;;
+    *)  sample="$path" ;;
+  esac
+  if git check-ignore -q "$sample" 2>/dev/null; then
+    escaped=$(printf '%s' "$path" | sed 's|[][\/.^$*]|\\&|g')
+    case "$path" in
+      */) GOVERNANCE_REGEX_PARTS="${GOVERNANCE_REGEX_PARTS}|^${escaped}" ;;
+      *)  GOVERNANCE_REGEX_PARTS="${GOVERNANCE_REGEX_PARTS}|^${escaped}\$" ;;
+    esac
+  fi
+done
+
+if [ -n "$GOVERNANCE_REGEX_PARTS" ]; then
+  BLOCKED_REGEX="${ALWAYS_BLOCK_REGEX}|(${GOVERNANCE_REGEX_PARTS#|})"
+else
+  BLOCKED_REGEX="$ALWAYS_BLOCK_REGEX"
+fi
+
+BLOCKED_PATHS=$(echo "$STAGED_FILES" | grep -E "$BLOCKED_REGEX" || true)
+if [ -n "$BLOCKED_PATHS" ]; then
+  echo "❌ pre-commit: refusing to commit private paths:"
+  echo "$BLOCKED_PATHS" | sed 's/^/  /'
+  echo ""
+  echo "These paths are excluded by policy. If staged by accident, run:"
+  echo "  git reset HEAD -- <file>"
+  exit 1
+fi
+
+# -----------------------------------------------------------------------------
+# 2. Banned substring block (company / employer identifiers).
+# -----------------------------------------------------------------------------
+BANNED_PATTERNS=(
+  'ネオサンプラネット'
+  'neosunplanet'
+  'neosunplanet.com'
+)
+
+VIOLATIONS=""
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  [ ! -f "$file" ] && continue
+  # Skip the hook scripts themselves — they declare the banned-pattern list
+  # in their own source, which would create a false self-match.
+  case "$file" in
+    scripts/git-hooks/*) continue ;;
+  esac
+  for pattern in "${BANNED_PATTERNS[@]}"; do
+    if grep --binary-files=without-match -l -F "$pattern" "$file" >/dev/null 2>&1; then
+      VIOLATIONS="${VIOLATIONS}  ${file} contains banned string: ${pattern}\n"
+    fi
+  done
+done <<< "$STAGED_FILES"
+
+if [ -n "$VIOLATIONS" ]; then
+  echo "❌ pre-commit: staged files contain banned strings:"
+  printf "$VIOLATIONS"
+  echo ""
+  echo "Remove the offending strings before committing."
+  exit 1
+fi
+
+# -----------------------------------------------------------------------------
+# 3. Author identity check.
+#    Only users.noreply.github.com-style addresses are allowed. The commit must
+#    not use the company identity nor a raw personal mailbox.
+# -----------------------------------------------------------------------------
+AUTHOR_NAME=$(git config user.name 2>/dev/null || true)
+AUTHOR_EMAIL=$(git config user.email 2>/dev/null || true)
+
+if echo "$AUTHOR_NAME" | grep -qiF "ネオサンプラネット"; then
+  echo "❌ pre-commit: git user.name contains banned company identifier ('$AUTHOR_NAME')."
+  echo "   Run: git config --local user.name 'risingore'"
+  exit 1
+fi
+if echo "$AUTHOR_EMAIL" | grep -qiF "neosunplanet"; then
+  echo "❌ pre-commit: git user.email contains banned company identifier ('$AUTHOR_EMAIL')."
+  echo "   Run: git config --local user.email 'risingore@users.noreply.github.com'"
+  exit 1
+fi
+if echo "$AUTHOR_EMAIL" | grep -qiE '@(gmail|googlemail|icloud|me|mac|yahoo|ymail|hotmail|outlook|live|msn|proton|protonmail|pm|aol|zoho|fastmail|gmx|mail|yandex)\.[a-z.]+$'; then
+  echo "❌ pre-commit: git user.email is a raw personal mailbox ('$AUTHOR_EMAIL')."
+  echo "   Use a GitHub noreply address instead:"
+  echo "     git config --local user.email 'risingore@users.noreply.github.com'"
+  exit 1
+fi
+
+# -----------------------------------------------------------------------------
+# 4. Oversized blob block.
+# -----------------------------------------------------------------------------
+MAX_FILE_SIZE_MB="${MAX_FILE_SIZE_MB:-5}"
+MAX_FILE_SIZE_BYTES=$((MAX_FILE_SIZE_MB * 1024 * 1024))
+
+LARGE_FILES=""
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  [ ! -f "$file" ] && continue
+  if [ -n "${PRE_COMMIT_EXEMPT_EXTENSIONS:-}" ]; then
+    skip=0
+    for ext in $PRE_COMMIT_EXEMPT_EXTENSIONS; do
+      case "$file" in
+        *."$ext") skip=1; break ;;
+      esac
+    done
+    [ "$skip" = "1" ] && continue
+  fi
+  size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo 0)
+  if [ "$size" -gt "$MAX_FILE_SIZE_BYTES" ]; then
+    human=$((size / 1024 / 1024))
+    LARGE_FILES="${LARGE_FILES}  ${file} (~${human} MB)\n"
+  fi
+done <<< "$STAGED_FILES"
+
+if [ -n "$LARGE_FILES" ]; then
+  echo "❌ pre-commit: refusing oversized staged files (> ${MAX_FILE_SIZE_MB} MB):"
+  printf "$LARGE_FILES"
+  echo ""
+  echo "Compress, move to assets-raw/ (gitignored), or use git-lfs."
+  echo "If truly intentional, override with:  git commit --no-verify"
+  exit 1
+fi
+
+# -----------------------------------------------------------------------------
+# 5. Project-specific extension hook.
+# -----------------------------------------------------------------------------
+LOCAL_HOOK="$(dirname "$0")/pre-commit.local"
+if [ -f "$LOCAL_HOOK" ]; then
+  # shellcheck source=/dev/null
+  source "$LOCAL_HOOK"
+fi
+
+exit 0

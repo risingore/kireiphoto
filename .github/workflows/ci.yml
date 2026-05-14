@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        # Nuxt's prepare step generates the `.nuxt/tsconfig.json` references
+        # used by tsc; run it before the type-check.
+        run: |
+          bunx nuxt prepare
+          bunx tsc --noEmit
+
+      - name: Build
+        run: bun run build
+
+      - name: Smoke test (verify build output)
+        run: |
+          test -d dist || { echo "ERROR: dist/ not produced by build"; exit 1; }
+          test "$(find dist -type f | wc -l)" -gt 0 || { echo "ERROR: dist/ is empty"; exit 1; }
+          echo "OK: dist/ contains $(find dist -type f | wc -l) files"
+
+      - name: Scaffold test (verify scripts/scaffold.sh works end-to-end)
+        run: bash scripts/scaffold-test.sh
+
+      - name: Run tests
+        # `continue-on-error: true` until tests are populated.
+        continue-on-error: true
+        run: bun test

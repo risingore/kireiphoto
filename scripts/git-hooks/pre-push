@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# =============================================================================
+# pre-push — kima-core gitleaks gate.
+#
+# Distributed by sync-to-derivatives.sh. Activated via core.hooksPath after
+# `bash scripts/install-hooks.sh`. Requires gitleaks on PATH; install via
+# `bash scripts/install-gitleaks.sh`.
+#
+# Behavior:
+#   - For every (local_ref local_sha remote_ref remote_sha) push entry, scan
+#     the commit range that is about to leave the local repo.
+#   - On a brand-new branch (remote_sha all zeros), scan commits reachable
+#     from local_sha but not from any other ref already on the remote.
+#   - On a delete (local_sha all zeros), skip — nothing to leak.
+#   - Any gitleaks finding aborts the push with exit 1.
+#
+# Bypass (use sparingly):
+#   git push --no-verify    # only if you have manually verified the diff
+# =============================================================================
+
+set -u
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "❌ pre-push: gitleaks not found on PATH."
+  echo "   Install with:  bash scripts/install-gitleaks.sh"
+  echo "   Then ensure ~/.local/bin is on your PATH."
+  exit 1
+fi
+
+ZERO_SHA="0000000000000000000000000000000000000000"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CONFIG_FLAG=""
+# Project-specific override takes precedence over the kima-core baseline.
+# .gitleaks.local.toml is NOT distributed by sync-to-derivatives.sh, so it
+# survives every sync. It should `[extend] path = ".gitleaks.toml"` to pick
+# up the baseline rules.
+if [ -f "$REPO_ROOT/.gitleaks.local.toml" ]; then
+  CONFIG_FLAG="--config=$REPO_ROOT/.gitleaks.local.toml"
+elif [ -f "$REPO_ROOT/.gitleaks.toml" ]; then
+  CONFIG_FLAG="--config=$REPO_ROOT/.gitleaks.toml"
+fi
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # Skip deletes — pushing a delete cannot leak anything.
+  [ "$local_sha" = "$ZERO_SHA" ] && continue
+
+  if [ "$remote_sha" = "$ZERO_SHA" ]; then
+    # New branch — scan commits reachable from local_sha but not yet on any remote.
+    # Skip if there are no unique commits (empty set means nothing to scan).
+    if [ -z "$(git rev-list -n 1 "$local_sha" --not --remotes 2>/dev/null)" ]; then
+      continue
+    fi
+    LOG_OPTS="$local_sha --not --remotes"
+  else
+    LOG_OPTS="${remote_sha}..${local_sha}"
+  fi
+
+  echo "🔍 pre-push: scanning [$LOG_OPTS] with gitleaks..."
+  # shellcheck disable=SC2086
+  if ! gitleaks detect \
+        --source "$REPO_ROOT" \
+        $CONFIG_FLAG \
+        --log-opts="$LOG_OPTS" \
+        --no-banner \
+        --redact; then
+    echo ""
+    echo "❌ pre-push: gitleaks found potential secrets in [$LOG_OPTS]."
+    echo "   Investigate the report above. Do NOT push until cleaned."
+    echo "   If it is a confirmed false positive, add an allowlist entry to"
+    echo "   .gitleaks.toml or use 'git push --no-verify' (use sparingly)."
+    exit 1
+  fi
+done
+
+exit 0

@@ -1,0 +1,55 @@
+# =============================================================================
+# .gitleaks.toml — kima-core baseline secret-scanning config.
+#
+# This file is distributed by sync-to-derivatives.sh to every derivative
+# template (phaser-template / three-template / nuxt-cloudflare-template /
+# python-template) and to the machines repo. It extends the gitleaks default
+# rule set with a shared allowlist that suppresses common false positives.
+#
+# Project-specific allowlist additions: append a second [[allowlists]] block
+# (gitleaks v8 supports multiple allowlists by repeating the array entry).
+# Do NOT edit the [extend] / [[allowlists]] block below — sync-to-derivatives.sh
+# overwrites this file.
+# =============================================================================
+
+title = "kima-core baseline"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "kima-core baseline allowlist (false positives across all projects)"
+
+paths = [
+  # Example / sample / template env files contain placeholder values, not secrets.
+  '''(.+/)?\.env\.example$''',
+  '''(.+/)?\.env\.sample$''',
+  '''(.+/)?\.env\.template$''',
+  # The gitleaks config itself contains regex patterns that look like secrets.
+  '''(.+/)?\.gitleaks\.toml$''',
+  # Vendored / generated trees — never our own secrets.
+  '''(.+/)?node_modules/.*''',
+  '''(.+/)?dist/.*''',
+  '''(.+/)?build/.*''',
+  '''(.+/)?\.venv/.*''',
+  '''(.+/)?\.next/.*''',
+  '''(.+/)?\.nuxt/.*''',
+  '''(.+/)?\.output/.*''',
+  '''(.+/)?\.wrangler/.*''',
+  # Lockfiles contain integrity hashes that can trip generic high-entropy rules.
+  '''(.+/)?bun\.lock$''',
+  '''(.+/)?package-lock\.json$''',
+  '''(.+/)?uv\.lock$''',
+  '''(.+/)?pnpm-lock\.yaml$''',
+  '''(.+/)?yarn\.lock$''',
+  # Test fixtures intentionally contain dummy credentials.
+  '''(.+/)?fixtures?/.*''',
+  '''(.+/)?test_data/.*''',
+  '''(.+/)?testdata/.*''',
+]
+
+regexes = [
+  # AWS-published example access key from the official IAM docs — used in
+  # tutorials, never a real credential.
+  '''AKIAIOSFODNN7EXAMPLE''',
+]
