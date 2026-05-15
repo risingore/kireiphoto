@@ -22,11 +22,12 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Type check
-        # Nuxt's prepare step generates the `.nuxt/tsconfig.json` references
-        # used by tsc; run it before the type-check.
+        # Nuxt 4.4 splits .nuxt/tsconfig into per-context configs
+        # (app / server / shared / node). `nuxt prepare` generates them,
+        # and `tsc -b` walks the project references in tsconfig.json.
         run: |
           bunx nuxt prepare
-          bunx tsc --noEmit
+          bunx tsc -b
 
       - name: Build
         run: bun run build
