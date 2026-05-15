@@ -1,17 +1,15 @@
-# Dependabot configuration — kima-core baseline.
+# Dependabot configuration — kireiphoto.
 #
-#派生テンプレートに sync-to-derivatives.sh で配布される。
-# 派生プロジェクト (派生テンプレを cp して作るもの) では、必要に応じて
-# package-ecosystem を切り替えること:
-#   - JS / TS / Bun: "npm"  ← 既定 (Bun は package.json を読むので npm 互換)
-#   - Python / uv:   "pip"  ← python-template 派生では切り替え
-#   - GitHub Actions: 共通 (両方有効化)
+# Bun lockfile (bun.lock) を更新するため、`package-ecosystem: "bun"` を
+# 使用する。Bun は現状 Dependabot の beta ecosystem 扱いのため
+# `enable-beta-ecosystems: true` が必要。
 #
 # `open-pull-requests-limit` を低めに保つことで、メンテ可能な PR 数に抑える。
 
 version: 2
+enable-beta-ecosystems: true
 updates:
-  - package-ecosystem: "npm"
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
