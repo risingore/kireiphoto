@@ -1,8 +1,17 @@
-# Dependabot configuration — kireiphoto.
+# Dependabot configuration — kima-core baseline.
 #
-# Bun lockfile (bun.lock) を更新するため、`package-ecosystem: "bun"` を
-# 使用する。Bun は現状 Dependabot の beta ecosystem 扱いのため
-# `enable-beta-ecosystems: true` が必要。
+# このファイルは kima-core 正本のテンプレ。sync-to-derivatives.sh が
+# 各派生プロジェクトに配布する際、ECOSYSTEMS 連想配列を参照して
+# `package-ecosystem` を以下のように書き換える:
+#
+#   ECOSYSTEMS["..."]="bun" → package-ecosystem: "bun" + enable-beta-ecosystems: true
+#   ECOSYSTEMS["..."]="pip" → package-ecosystem: "pip"
+#   それ以外                → package-ecosystem: "npm" のまま (汎用デフォルト)
+#
+# 派生プロジェクト側でこのファイルを直接編集しても、次回 kima-core sync 時に
+# ECOSYSTEMS マップに従って上書きされる。新しいテンプレ／実プロジェクトを
+# 追加する場合は sync-to-derivatives.sh の DERIVATIVES と ECOSYSTEMS に
+# 1 行追加すれば自動的に正しい dependabot.yml が配布される。
 #
 # `open-pull-requests-limit` を低めに保つことで、メンテ可能な PR 数に抑える。
 
