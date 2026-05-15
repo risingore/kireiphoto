@@ -51,7 +51,9 @@ _scaffold_cp() {
 }
 
 # Remove kima governance / build residue from a freshly-copied target.
-# Always removes: .git, node_modules, dist, .claude/projects, .claude/settings.local.json, tasks, scripts/scaffold-test.sh
+# Always removes: .git, node_modules, dist, .claude/projects,
+# .claude/settings.local.json, tasks, scripts/scaffold-test.sh,
+# .github/workflows/template-ci.yml.
 # Additional dirs to remove can be passed as extra args.
 _scaffold_clean_residue() {
   local target="$1"
@@ -64,6 +66,9 @@ _scaffold_clean_residue() {
     ".claude/settings.local.json"
     "tasks"
     "scripts/scaffold-test.sh"
+    # template-only workflow: runs scaffold-test in the template repo's
+    # GitHub Actions. Derived projects must not carry this file.
+    ".github/workflows/template-ci.yml"
   )
   echo "==> Cleaning residue: ${default_clean[*]} $*"
   local d
