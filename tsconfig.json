@@ -1,4 +1,10 @@
 {
   // https://nuxt.com/docs/guide/concepts/typescript
-  "extends": "./.nuxt/tsconfig.json"
+  "extends": "./.nuxt/tsconfig.json",
+  "compilerOptions": {
+    // .nuxt/tsconfig.json sets types: [] which strips @types/node.
+    // nuxt.config.ts and Nitro server code need Node globals (process,
+    // node:child_process), so re-introduce them at the root level.
+    "types": ["node"]
+  }
 }

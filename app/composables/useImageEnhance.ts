@@ -249,13 +249,16 @@ function applyUnsharpMask(
   // Box blur approximation (single pass for speed on large 4x images)
   boxBlur(blurred.data, w, h, radius)
 
-  // Sharpen: original + amount * (original - blurred)
+  // Sharpen: original + amount * (original - blurred). Channels cached
+  // locally — hot loop runs WxHx4 times on a 4x upscale.
   const src = original.data
   const blur = blurred.data
   for (let i = 0; i < src.length; i += 4) {
-    src[i] = clamp(src[i] + amount * (src[i] - blur[i]))
-    src[i + 1] = clamp(src[i + 1] + amount * (src[i + 1] - blur[i + 1]))
-    src[i + 2] = clamp(src[i + 2] + amount * (src[i + 2] - blur[i + 2]))
+    const r = src[i]!, g = src[i + 1]!, b = src[i + 2]!
+    const br = blur[i]!, bg = blur[i + 1]!, bb = blur[i + 2]!
+    src[i] = clamp(r + amount * (r - br))
+    src[i + 1] = clamp(g + amount * (g - bg))
+    src[i + 2] = clamp(b + amount * (b - bb))
   }
 
   ctx.putImageData(original, 0, 0)
@@ -272,16 +275,16 @@ function boxBlur(data: Uint8ClampedArray, w: number, h: number, r: number) {
       for (let dx = -r; dx <= r; dx++) {
         const sx = Math.min(w - 1, Math.max(0, x + dx))
         const idx = (y * w + sx) * 4
-        rr += data[idx]
-        gg += data[idx + 1]
-        bb += data[idx + 2]
+        rr += data[idx]!
+        gg += data[idx + 1]!
+        bb += data[idx + 2]!
         count++
       }
       const idx = (y * w + x) * 4
       temp[idx] = rr / count
       temp[idx + 1] = gg / count
       temp[idx + 2] = bb / count
-      temp[idx + 3] = data[idx + 3]
+      temp[idx + 3] = data[idx + 3]!
     }
   }
 
@@ -292,9 +295,9 @@ function boxBlur(data: Uint8ClampedArray, w: number, h: number, r: number) {
       for (let dy = -r; dy <= r; dy++) {
         const sy = Math.min(h - 1, Math.max(0, y + dy))
         const idx = (sy * w + x) * 4
-        rr += temp[idx]
-        gg += temp[idx + 1]
-        bb += temp[idx + 2]
+        rr += temp[idx]!
+        gg += temp[idx + 1]!
+        bb += temp[idx + 2]!
         count++
       }
       const idx = (y * w + x) * 4

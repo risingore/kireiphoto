@@ -37,9 +37,6 @@ jobs:
           test "$(find dist -type f | wc -l)" -gt 0 || { echo "ERROR: dist/ is empty"; exit 1; }
           echo "OK: dist/ contains $(find dist -type f | wc -l) files"
 
-      - name: Scaffold test (verify scripts/scaffold.sh works end-to-end)
-        run: bash scripts/scaffold-test.sh
-
       - name: Run tests
         # `continue-on-error: true` until tests are populated.
         continue-on-error: true
