@@ -1,0 +1,10 @@
+# OSV scanner allowlist. Every entry must state a reason.
+# Revisit whenever upstream dependency ranges move (bot update PRs).
+
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+reason = "brace-expansion 2.x transitive of build tooling; fixed major (5.x) is outside parent range. Build-time only, no untrusted input (reviewed 2026-07-31)"
+
+[[IgnoredVulns]]
+id = "GHSA-g7r4-m6w7-qqqr"
+reason = "esbuild 0.27 pinned by framework toolchain; fix is 0.28 outside parent range. Severity 2.5, local dev builds only (reviewed 2026-07-31)"
