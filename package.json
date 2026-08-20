@@ -22,7 +22,7 @@
   "devDependencies": {
     "@types/node": "26.1.1",
     "typescript": "5.9.3",
-    "vue-tsc": "3.3.8",
+    "vue-tsc": "3.3.10",
     "wrangler": "4.114.0"
   },
   "overrides": {
