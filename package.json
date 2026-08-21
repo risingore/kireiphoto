@@ -20,7 +20,7 @@
     "vue-router": "5.2.0"
   },
   "devDependencies": {
-    "@types/node": "26.1.1",
+    "@types/node": "26.2.0",
     "typescript": "5.9.3",
     "vue-tsc": "3.3.10",
     "wrangler": "4.114.0"
