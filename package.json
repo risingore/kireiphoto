@@ -23,7 +23,7 @@
     "@types/node": "26.2.0",
     "typescript": "5.9.3",
     "vue-tsc": "3.3.10",
-    "wrangler": "4.114.0"
+    "wrangler": "4.125.0"
   },
   "overrides": {
     "defu": "6.1.5",
