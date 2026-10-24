@@ -8,3 +8,11 @@ reason = "brace-expansion 2.x transitive of build tooling; fixed major (5.x) is 
 [[IgnoredVulns]]
 id = "GHSA-g7r4-m6w7-qqqr"
 reason = "esbuild 0.27 pinned by framework toolchain; fix is 0.28 outside parent range. Severity 2.5, local dev builds only (reviewed 2026-07-31)"
+
+[[IgnoredVulns]]
+id = "GHSA-86w9-cpqp-85rv"
+reason = "node-forge 1.4.0 RSA PKCS#1 v1.5 signature verification flaw. osv.dev lists last_affected 1.4.0 with no fixed release and npm latest is still 1.4.0 (verified 2026-10-22). Reached only via listhen (dev server self-signed certs); not part of the production bundle. Remove once upstream ships a fix"
+
+[[IgnoredVulns]]
+id = "GHSA-vjh5-4x84-xrqp"
+reason = "Route rules case-mismatch skip in nuxt / @nuxt/nitro-server. Fixed version 4.6.2 is installed; the advisory's 3.x range has no fixed event (open range) so 4.6.2 is a false match (verified against osv.dev API 2026-10-22). Remove once the advisory range is corrected"
