@@ -16,3 +16,7 @@ reason = "node-forge 1.4.0 RSA PKCS#1 v1.5 signature verification flaw. osv.dev 
 [[IgnoredVulns]]
 id = "GHSA-vjh5-4x84-xrqp"
 reason = "Route rules case-mismatch skip in nuxt / @nuxt/nitro-server. Fixed version 4.6.2 is installed; the advisory's 3.x range has no fixed event (open range) so 4.6.2 is a false match (verified against osv.dev API 2026-10-22). Remove once the advisory range is corrected"
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+reason = "deepmerge 4.3.1 prototype poisoning (CVSS 5.3). Only exploitable when merging attacker-controlled objects. No fixed release exists: npm dist-tags.latest is still 4.3.1 (verified against registry.npmjs.org on 2026-11-04). Reached only through @rollup/plugin-node-resolve@16.0.3 at build time (bun.lock lists that single requirer; zero references in app/, server/ and shared/ - verified 2026-11-04). Absent from the shipped output as well (scanned all 54 files under dist/, zero hits - verified 2026-11-04). Drop this entry once a fixed release lands."

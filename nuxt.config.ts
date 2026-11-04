@@ -13,6 +13,9 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-01-01',
   devtools: { enabled: true },
 
+  // Nuxt 4.6.3+ fails to resolve the default devServer.host, so set it explicitly
+  devServer: { host: 'localhost' },
+
   modules: [
     '@nuxt/ui',
     'nuxt-auth-utils'
