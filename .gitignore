@@ -35,6 +35,7 @@ CLAUDE.md*
 tasks/
 .gitleaks.toml
 .gitleaks.local.toml
+.*-tools
 .*-version
 scripts/git-hooks/
 scripts/install-hooks.sh
@@ -49,6 +50,7 @@ scripts/test-block-secrets.py
 scripts/test-public-isolation.sh
 scripts/test-hook-robustness.sh
 scripts/test-auto-approve.sh
+scripts/test-shared-memory-sync.sh
 scripts/test-ci-smoke.sh
 scripts/lessons-harvest.sh
 scripts/test-lessons-harvest.sh
